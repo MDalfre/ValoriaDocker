@@ -136,7 +136,7 @@ services:
     networks:
       - openmu-network
     ports:
-      - "127.0.0.1:${VALORIA_WEB_PORT:-8081}:80"
+      - "${VALORIA_WEB_BIND:-127.0.0.1}:${VALORIA_WEB_PORT:-8081}:80"
 
 networks:
   openmu-network:

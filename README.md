@@ -38,6 +38,8 @@ Edit `.env` and replace every placeholder. In production:
 - Keep `VALORIA_REQUIRE_HTTPS=true`.
 - Generate `VALORIA_JWT_SECRET` with `openssl rand -base64 32`.
 - Use a unique, strong value for `DB_PASS`.
+- Without a domain and TLS, set `VALORIA_WEB_BIND=0.0.0.0` and
+  `VALORIA_WEB_PORT=80` only for public, unauthenticated pages.
 
 The real `.env` is intentionally ignored by Git.
 
@@ -98,5 +100,7 @@ firewall.
 - Do not publish PostgreSQL port `5432`.
 - Keep the administrative and frontend test ports bound to loopback.
 - Terminate public website traffic through HTTPS before enabling real logins.
+- Do not enable account login or administration while serving the website over
+  plain HTTP.
 - Keep `VALORIA_BACKUP_RESTORE_ENABLED=false` until restore authorization and
   operational safeguards have been reviewed.
