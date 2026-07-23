@@ -1,0 +1,152 @@
+services:
+  db:
+    image: postgres:18.3-trixie
+    container_name: openmu-postgres
+    restart: always
+    networks:
+      - openmu-network
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=${DB_NAME}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - TZ=${TIMEZ}
+    volumes:
+      - openmu-db-data:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  openmu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        OPENMU_REPOSITORY: "${OPENMU_REPOSITORY:-https://github.com/MUnique/OpenMU.git}"
+        OPENMU_REF: "${OPENMU_REF:-master}"
+    image: openmu:latest
+    container_name: openmu-server
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - openmu-network
+    environment:
+      DB_HOST: db
+      DB_ADMIN_USER: "${DB_USER}"
+      DB_ADMIN_PW: "${DB_PASS}"
+      ASPNETCORE_URLS: "http://+:8080"
+      TZ: "${TIMEZ}"
+      RESOLVE_IP: "${RESOLVE_IP:-192.168.1.199}"
+    ports:
+      - "44406:44406" # ConnectServer_OpenSource_client
+      - "55902:55902" # GameServer_OpenSource_client
+      - "55904:55904" # GameServer_OpenSource_client
+      - "55906:55906" # GameServer_OpenSource_client
+      - "55907:55907" # GameServer_OpenSource_client
+      - "55908:55908" # GameServer_OpenSource_client
+      - "127.0.0.1:${ADM_PORT:-29596}:8080" # Admin_Panel
+
+  db-backup:
+    image: postgres:18.3-trixie
+    container_name: openmu-db-backup
+    restart: unless-stopped
+    networks:
+      - openmu-network
+    environment:
+      - DB_HOST=db
+      - DB_USER=${DB_USER}
+      - DB_NAME=${DB_NAME}
+      - BACKUP_DIR=/backups
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL:-86400}
+      - RETENTION_DAYS=${RETENTION_DAYS:-7}
+      - PGUSER=${DB_USER}
+      - PGPASSWORD=${DB_PASS}
+      - TZ=${TIMEZ}
+    volumes:
+      - ./backups:/backups
+      - ./backup/backup.sh:/usr/local/bin/backup.sh
+    depends_on:
+      db:
+        condition: service_healthy
+    # Unhealthy if no fresh backup within the interval (+90 min grace) - a quick
+    # visual signal in `docker ps` that backups have stopped.
+    healthcheck:
+      test: ["CMD-SHELL", "find /backups -name 'openmu_*.dump.gz' -mmin -$$(( ${BACKUP_INTERVAL:-86400} / 60 + 90 )) | grep -q ."]
+      interval: 10m
+      timeout: 10s
+      retries: 2
+      start_period: 2m
+    command: >
+      sh -c "
+      while true; do
+        /usr/local/bin/backup.sh;
+        sleep ${BACKUP_INTERVAL:-86400};
+      done
+      "
+  valoria-api:
+    build:
+      context: https://github.com/MDalfre/ValoriaApi.git#main
+    image: valoria-api:latest
+    container_name: valoria-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - openmu-network
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASS}"
+      JWT_SECRET_BASE64: "${VALORIA_JWT_SECRET}"
+      FRONTEND_ORIGIN: "${VALORIA_ORIGIN:-http://localhost:8081}"
+      REQUIRE_HTTPS: "${VALORIA_REQUIRE_HTTPS:-false}"
+      TRIAL_VIP_DAYS: "${VALORIA_TRIAL_VIP_DAYS:-15}"
+      TRIAL_VIP_LEVEL: "${VALORIA_TRIAL_VIP_LEVEL:-1}"
+      BACKUP_DIRECTORY: /backups
+      BACKUP_RESTORE_ENABLED: "${VALORIA_BACKUP_RESTORE_ENABLED:-false}"
+      TZ: "${TIMEZ}"
+    volumes:
+      - ./backups:/backups
+      - valoria-restore-staging:/restore-staging
+    expose:
+      - "8090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8090/actuator/health/readiness"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  valoria-web:
+    build:
+      context: https://github.com/MDalfre/ValoriaWeb.git#main
+    image: valoria-web:latest
+    container_name: valoria-web
+    restart: unless-stopped
+    depends_on:
+      valoria-api:
+        condition: service_healthy
+    networks:
+      - openmu-network
+    ports:
+      - "127.0.0.1:${VALORIA_WEB_PORT:-8081}:80"
+
+networks:
+  openmu-network:
+    name: openmu-network
+    driver: bridge
+
+volumes:
+  openmu-db-data:
+    name: openmu-db
+  valoria-restore-staging:
+    name: valoria-restore-staging
+
+

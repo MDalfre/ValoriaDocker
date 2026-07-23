@@ -1,0 +1,12 @@
+# runtime data & local artifacts
+.env
+.env.*
+!.env.example
+backups/
+restore-staging/
+*.dump
+*.dump.gz
+*.bak
+OpenMU
+bin/
+obj/
