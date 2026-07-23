@@ -40,6 +40,8 @@ Edit `.env` and replace every placeholder. In production:
 - Use a unique, strong value for `DB_PASS`.
 - Without a domain and TLS, set `VALORIA_WEB_BIND=0.0.0.0` and
   `VALORIA_WEB_PORT=80` only for public, unauthenticated pages.
+- Place published client archives in `downloads/`. The web container exposes
+  this directory at `/downloads/` without adding the large binaries to Git.
 
 The real `.env` is intentionally ignored by Git.
 
